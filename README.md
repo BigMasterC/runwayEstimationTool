@@ -49,7 +49,7 @@ I'm using PostgreSQL (psql, for short).
 
 
 
-# Storage Forecast Dashboard
+# [PREDEFINED STUFF]
 
 A dashboard for monitoring storage usage trends and forecasting future storage needs. This application uses a React frontend with Recharts for data visualization and an Express.js backend that connects to a PostgreSQL database.
 
