@@ -16,6 +16,8 @@ To start the React frontend:
 npm start
 ```
 
+## .SQL files are SCRIPTS that run in the current specificed DB (in the .env file)
+
 ## How I Got Cursor to Make It
 
 I initially asked:  
