@@ -1,89 +1,62 @@
 -- Drop tables if they exist
 DROP TABLE IF EXISTS storage_history;
 DROP TABLE IF EXISTS storage_forecast;
+DROP TABLE IF EXISTS pipeline_effects;
 
--- Create tables
-CREATE TABLE storage_history (
-  id SERIAL PRIMARY KEY,
-  date DATE NOT NULL,
-  usage_tb NUMERIC(10, 2) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Create the database schema
+CREATE TABLE storage_systems (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    total_capacity_gb NUMERIC NOT NULL, -- Total storage capacity in GB
+    used_capacity_gb NUMERIC NOT NULL, -- Current storage usage in GB
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE storage_forecast (
-  id SERIAL PRIMARY KEY,
-  date DATE NOT NULL,
-  baseline_tb NUMERIC(10, 2) NOT NULL,
-  pipeline_a_down_tb NUMERIC(10, 2) NOT NULL,
-  pipeline_b_down_tb NUMERIC(10, 2) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE pipelines (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE, -- Name of the pipeline
+    description TEXT NOT NULL, -- Pipeline description
+    status VARCHAR(20) NOT NULL DEFAULT 'active', -- active, failed, or paused
+    last_run TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Last time the pipeline ran successfully
+    impact_rate_gb_per_day NUMERIC NOT NULL -- How much storage the pipeline impacts per day (positive or negative)
 );
 
--- Insert sample data for storage history (last 30 days)
-INSERT INTO storage_history (date, usage_tb)
-VALUES
-  (CURRENT_DATE - INTERVAL '30 days', 150.25),
-  (CURRENT_DATE - INTERVAL '29 days', 152.50),
-  (CURRENT_DATE - INTERVAL '28 days', 154.75),
-  (CURRENT_DATE - INTERVAL '27 days', 157.00),
-  (CURRENT_DATE - INTERVAL '26 days', 159.25),
-  (CURRENT_DATE - INTERVAL '25 days', 161.50),
-  (CURRENT_DATE - INTERVAL '24 days', 163.75),
-  (CURRENT_DATE - INTERVAL '23 days', 166.00),
-  (CURRENT_DATE - INTERVAL '22 days', 168.25),
-  (CURRENT_DATE - INTERVAL '21 days', 170.50),
-  (CURRENT_DATE - INTERVAL '20 days', 172.75),
-  (CURRENT_DATE - INTERVAL '19 days', 175.00),
-  (CURRENT_DATE - INTERVAL '18 days', 177.25),
-  (CURRENT_DATE - INTERVAL '17 days', 179.50),
-  (CURRENT_DATE - INTERVAL '16 days', 181.75),
-  (CURRENT_DATE - INTERVAL '15 days', 184.00),
-  (CURRENT_DATE - INTERVAL '14 days', 186.25),
-  (CURRENT_DATE - INTERVAL '13 days', 188.50),
-  (CURRENT_DATE - INTERVAL '12 days', 190.75),
-  (CURRENT_DATE - INTERVAL '11 days', 193.00),
-  (CURRENT_DATE - INTERVAL '10 days', 195.25),
-  (CURRENT_DATE - INTERVAL '9 days', 197.50),
-  (CURRENT_DATE - INTERVAL '8 days', 199.75),
-  (CURRENT_DATE - INTERVAL '7 days', 202.00),
-  (CURRENT_DATE - INTERVAL '6 days', 204.25),
-  (CURRENT_DATE - INTERVAL '5 days', 206.50),
-  (CURRENT_DATE - INTERVAL '4 days', 208.75),
-  (CURRENT_DATE - INTERVAL '3 days', 211.00),
-  (CURRENT_DATE - INTERVAL '2 days', 213.25),
-  (CURRENT_DATE - INTERVAL '1 day', 215.50),
-  (CURRENT_DATE, 217.75);
+CREATE TABLE storage_usage_history (
+    id SERIAL PRIMARY KEY,
+    storage_system_id INT NOT NULL REFERENCES storage_systems(id) ON DELETE CASCADE,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Timestamp for the data point
+    used_capacity_gb NUMERIC NOT NULL -- Storage usage in GB at a specific time
+);
 
--- Insert sample data for storage forecast (next 30 days)
-INSERT INTO storage_forecast (date, baseline_tb, pipeline_a_down_tb, pipeline_b_down_tb)
-VALUES
-  (CURRENT_DATE + INTERVAL '1 day', 220.00, 219.00, 218.50),
-  (CURRENT_DATE + INTERVAL '2 days', 222.25, 220.25, 219.75),
-  (CURRENT_DATE + INTERVAL '3 days', 224.50, 221.50, 221.00),
-  (CURRENT_DATE + INTERVAL '4 days', 226.75, 222.75, 222.25),
-  (CURRENT_DATE + INTERVAL '5 days', 229.00, 224.00, 223.50),
-  (CURRENT_DATE + INTERVAL '6 days', 231.25, 225.25, 224.75),
-  (CURRENT_DATE + INTERVAL '7 days', 233.50, 226.50, 226.00),
-  (CURRENT_DATE + INTERVAL '8 days', 235.75, 227.75, 227.25),
-  (CURRENT_DATE + INTERVAL '9 days', 238.00, 229.00, 228.50),
-  (CURRENT_DATE + INTERVAL '10 days', 240.25, 230.25, 229.75),
-  (CURRENT_DATE + INTERVAL '11 days', 242.50, 231.50, 231.00),
-  (CURRENT_DATE + INTERVAL '12 days', 244.75, 232.75, 232.25),
-  (CURRENT_DATE + INTERVAL '13 days', 247.00, 234.00, 233.50),
-  (CURRENT_DATE + INTERVAL '14 days', 249.25, 235.25, 234.75),
-  (CURRENT_DATE + INTERVAL '15 days', 251.50, 236.50, 236.00),
-  (CURRENT_DATE + INTERVAL '16 days', 253.75, 237.75, 237.25),
-  (CURRENT_DATE + INTERVAL '17 days', 256.00, 239.00, 238.50),
-  (CURRENT_DATE + INTERVAL '18 days', 258.25, 240.25, 239.75),
-  (CURRENT_DATE + INTERVAL '19 days', 260.50, 241.50, 241.00),
-  (CURRENT_DATE + INTERVAL '20 days', 262.75, 242.75, 242.25),
-  (CURRENT_DATE + INTERVAL '21 days', 265.00, 244.00, 243.50),
-  (CURRENT_DATE + INTERVAL '22 days', 267.25, 245.25, 244.75),
-  (CURRENT_DATE + INTERVAL '23 days', 269.50, 246.50, 246.00),
-  (CURRENT_DATE + INTERVAL '24 days', 271.75, 247.75, 247.25),
-  (CURRENT_DATE + INTERVAL '25 days', 274.00, 249.00, 248.50),
-  (CURRENT_DATE + INTERVAL '26 days', 276.25, 250.25, 249.75),
-  (CURRENT_DATE + INTERVAL '27 days', 278.50, 251.50, 251.00),
-  (CURRENT_DATE + INTERVAL '28 days', 280.75, 252.75, 252.25),
-  (CURRENT_DATE + INTERVAL '29 days', 283.00, 254.00, 253.50),
-  (CURRENT_DATE + INTERVAL '30 days', 285.25, 255.25, 254.75); 
+-- Insert example storage systems
+INSERT INTO storage_systems (name, total_capacity_gb, used_capacity_gb) VALUES
+('Primary Storage', 1000, 500), -- A storage system with 1000GB total capacity and 500GB used
+('Backup Storage', 2000, 800); -- A larger storage system
+
+-- Insert example pipelines
+INSERT INTO pipelines (name, description, status, impact_rate_gb_per_day) VALUES
+('Garbage Collection Pipeline', 'Deletes unneeded files to free up space.', 'active', -50), -- Frees 50GB/day
+('Compaction Pipeline', 'Reorganizes data on disk to use less space.', 'active', -10), -- Frees 10GB/day
+('Data Ingestion Pipeline', 'Brings in new data from external sources.', 'active', 30), -- Adds 30GB/day
+('Backup Pipeline', 'Copies data elsewhere for safety.', 'active', 0); -- Neutral impact
+
+-- Insert example historical storage usage data
+-- (Simulating usage trends over the past week)
+INSERT INTO storage_usage_history (storage_system_id, recorded_at, used_capacity_gb) VALUES
+(1, '2025-04-05 00:00:00', 480),
+(1, '2025-04-06 00:00:00', 490),
+(1, '2025-04-07 00:00:00', 500),
+(1, '2025-04-08 00:00:00', 515),
+(1, '2025-04-09 00:00:00', 530),
+(1, '2025-04-10 00:00:00', 550),
+(1, '2025-04-11 00:00:00', 570),
+(2, '2025-04-05 00:00:00', 780),
+(2, '2025-04-06 00:00:00', 785),
+(2, '2025-04-07 00:00:00', 790),
+(2, '2025-04-08 00:00:00', 800),
+(2, '2025-04-09 00:00:00', 810),
+(2, '2025-04-10 00:00:00', 820),
+(2, '2025-04-11 00:00:00', 830);
+
+-- Simulate a pipeline failure (e.g., Garbage Collection Pipeline fails)
+UPDATE pipelines SET status = 'failed', last_run = '2025-04-10 00:00:00' WHERE name = 'Garbage Collection Pipeline'; 
