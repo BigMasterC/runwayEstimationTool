@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -13,6 +13,7 @@ import {
 import { motion } from "framer-motion";
 
 const API_BASE_URL = "http://localhost:5000/api";
+const WS_URL = "ws://localhost:5000";
 
 const Dashboard = () => {
   // State for data from the backend
@@ -26,43 +27,207 @@ const Dashboard = () => {
 
   // What-if scenario toggles for pipeline failures
   const [failedPipelines, setFailedPipelines] = useState({});
+  
+  // WebSocket reference
+  const socketRef = useRef(null);
 
-  // Fetch initial data from the backend
+  // Function to establish WebSocket connection
   useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        // Fetch storage systems
-        const systemsResponse = await axios.get(`${API_BASE_URL}/storage/systems`);
-        setStorageSystems(systemsResponse.data);
-        
-        // Set the first system as selected by default
-        if (systemsResponse.data.length > 0) {
-          setSelectedSystem(systemsResponse.data[0].id);
+    // Create WebSocket connection
+    socketRef.current = new WebSocket(WS_URL);
+    
+    // Connection opened
+    socketRef.current.addEventListener('open', (event) => {
+      console.log('WebSocket connection established');
+    });
+    
+    // Listen for messages
+    socketRef.current.addEventListener('message', (event) => {
+      const data = JSON.parse(event.data);
+      console.log('WebSocket message received:', data);
+      
+      // Handle different types of incoming data
+      if (data.type === 'initial_storage') {
+        setStorageSystems(data.data);
+        if (data.data.length > 0 && !selectedSystem) {
+          setSelectedSystem(data.data[0].id);
         }
-        
-        // Fetch pipelines
-        const pipelinesResponse = await axios.get(`${API_BASE_URL}/pipelines`);
-        setPipelines(pipelinesResponse.data);
-        
+      } 
+      else if (data.type === 'initial_pipelines') {
+        setPipelines(data.data);
         // Initialize failed pipelines state
         const initialFailedState = {};
-        pipelinesResponse.data.forEach(pipeline => {
+        data.data.forEach(pipeline => {
           initialFailedState[pipeline.id] = pipeline.status === 'failed';
         });
         setFailedPipelines(initialFailedState);
+      } 
+      else if (data.type === 'initial_history') {
+        const formattedData = data.data.map(item => ({
+          date: new Date(item.recorded_at).toLocaleDateString(),
+          usedSpace: parseFloat(item.used_capacity_gb),
+        }));
+        setHistoricalData(formattedData);
+      } 
+      else if (data.channel === 'storage_change') {
+        // Handle storage system updates
+        const payload = data.payload;
         
-        // Fetch runway data
-        const runwayResponse = await axios.get(`${API_BASE_URL}/storage/runway`);
-        setRunwayData(runwayResponse.data);
+        // Update storage systems list
+        if (payload.action === 'update') {
+          setStorageSystems(prev => prev.map(system => 
+            system.id === payload.data.id ? { ...system, ...payload.data } : system
+          ));
+        }
         
-        // Set warning based on runway days
-        if (runwayResponse.data.length > 0) {
-          const primarySystem = runwayResponse.data[0]; // assuming first is primary
-          if (primarySystem.estimated_runway_days <= 3) {
-            setWarning("Critical: Only 3 days or less of storage left!");
-          } else if (primarySystem.estimated_runway_days <= 7) {
-            setWarning("Warning: Less than a week of storage left!");
+        // Update historical data if it matches the selected system
+        if (payload.data && payload.data.storage_system_id === selectedSystem) {
+          fetchSystemData(selectedSystem);
+        }
+        
+        // Update runway data
+        fetchRunwayData();
+      } 
+      else if (data.channel === 'pipeline_change') {
+        // Handle pipeline updates
+        const payload = data.payload;
+        
+        // Update pipelines list
+        if (payload.action === 'update') {
+          setPipelines(prev => prev.map(pipeline => 
+            pipeline.id === payload.data.id ? { ...pipeline, ...payload.data } : pipeline
+          ));
+          
+          // Update failed pipelines state if status changed
+          if (payload.data.status) {
+            setFailedPipelines(prev => ({
+              ...prev,
+              [payload.data.id]: payload.data.status === 'failed'
+            }));
           }
+        }
+        
+        // Refresh forecast and runway data on pipeline changes
+        if (selectedSystem) {
+          fetchForecastData(selectedSystem);
+        }
+        fetchRunwayData();
+      }
+    });
+    
+    // Handle errors
+    socketRef.current.addEventListener('error', (error) => {
+      console.error('WebSocket error:', error);
+    });
+    
+    // Handle close
+    socketRef.current.addEventListener('close', (event) => {
+      console.log('WebSocket connection closed');
+      // Attempt to reconnect after a delay
+      setTimeout(() => {
+        if (socketRef.current.readyState === WebSocket.CLOSED) {
+          console.log('Attempting to reconnect WebSocket...');
+          socketRef.current = new WebSocket(WS_URL);
+        }
+      }, 3000);
+    });
+    
+    // Clean up on component unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+    };
+  }, []);
+  
+  // Re-fetch data when selected system changes
+  useEffect(() => {
+    if (!selectedSystem) return;
+    
+    fetchSystemData(selectedSystem);
+    fetchForecastData(selectedSystem);
+  }, [selectedSystem]);
+
+  // Function to fetch system-specific data
+  const fetchSystemData = async (systemId) => {
+    try {
+      // Fetch historical data for the selected system
+      const historyResponse = await axios.get(`${API_BASE_URL}/storage/history/${systemId}`);
+      const formattedHistoryData = historyResponse.data.map(item => ({
+        date: new Date(item.recorded_at).toLocaleDateString(),
+        usedSpace: parseFloat(item.used_capacity_gb),
+      }));
+      setHistoricalData(formattedHistoryData);
+    } catch (error) {
+      console.error("Error fetching system historical data:", error);
+    }
+  };
+  
+  // Function to fetch forecast data
+  const fetchForecastData = async (systemId) => {
+    try {
+      // Fetch forecast data for the selected system
+      const forecastResponse = await axios.get(`${API_BASE_URL}/storage/forecast/${systemId}`);
+      setForecastData(forecastResponse.data);
+    } catch (error) {
+      console.error("Error fetching system forecast data:", error);
+    }
+  };
+  
+  // Function to fetch runway data
+  const fetchRunwayData = async () => {
+    try {
+      const runwayResponse = await axios.get(`${API_BASE_URL}/storage/runway`);
+      setRunwayData(runwayResponse.data);
+      
+      // Set warning based on runway days
+      if (runwayResponse.data.length > 0) {
+        const primarySystem = runwayResponse.data[0]; // assuming first is primary
+        if (primarySystem.estimated_runway_days <= 3) {
+          setWarning("Critical: Only 3 days or less of storage left!");
+        } else if (primarySystem.estimated_runway_days <= 7) {
+          setWarning("Warning: Less than a week of storage left!");
+        } else {
+          setWarning("");
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching runway data:", error);
+    }
+  };
+
+  // Initial data fetch (as a fallback if WebSocket initial data doesn't arrive)
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        // Only fetch if we don't have data yet (WebSocket hasn't provided it)
+        if (storageSystems.length === 0) {
+          // Fetch storage systems
+          const systemsResponse = await axios.get(`${API_BASE_URL}/storage/systems`);
+          setStorageSystems(systemsResponse.data);
+          
+          // Set the first system as selected by default
+          if (systemsResponse.data.length > 0) {
+            setSelectedSystem(systemsResponse.data[0].id);
+          }
+        }
+        
+        if (pipelines.length === 0) {
+          // Fetch pipelines
+          const pipelinesResponse = await axios.get(`${API_BASE_URL}/pipelines`);
+          setPipelines(pipelinesResponse.data);
+          
+          // Initialize failed pipelines state
+          const initialFailedState = {};
+          pipelinesResponse.data.forEach(pipeline => {
+            initialFailedState[pipeline.id] = pipeline.status === 'failed';
+          });
+          setFailedPipelines(initialFailedState);
+        }
+        
+        if (runwayData.length === 0) {
+          // Fetch runway data
+          fetchRunwayData();
         }
       } catch (error) {
         console.error("Error fetching initial data:", error);
@@ -71,31 +236,6 @@ const Dashboard = () => {
 
     fetchInitialData();
   }, []);
-
-  // Fetch system-specific data when selected system changes
-  useEffect(() => {
-    if (!selectedSystem) return;
-
-    const fetchSystemData = async () => {
-      try {
-        // Fetch historical data for the selected system
-        const historyResponse = await axios.get(`${API_BASE_URL}/storage/history/${selectedSystem}`);
-        const formattedHistoryData = historyResponse.data.map(item => ({
-          date: new Date(item.recorded_at).toLocaleDateString(),
-          usedSpace: parseFloat(item.used_capacity_gb),
-        }));
-        setHistoricalData(formattedHistoryData);
-
-        // Fetch forecast data for the selected system
-        const forecastResponse = await axios.get(`${API_BASE_URL}/storage/forecast/${selectedSystem}`);
-        setForecastData(forecastResponse.data);
-      } catch (error) {
-        console.error("Error fetching system data:", error);
-      }
-    };
-
-    fetchSystemData();
-  }, [selectedSystem]);
 
   // Update pipeline status when a what-if toggle is changed
   const handlePipelineToggle = async (pipelineId, isFailedNow) => {
@@ -111,31 +251,7 @@ const Dashboard = () => {
         status: isFailedNow ? 'failed' : 'active'
       });
       
-      // Refetch pipeline data
-      const pipelinesResponse = await axios.get(`${API_BASE_URL}/pipelines`);
-      setPipelines(pipelinesResponse.data);
-      
-      // Refetch runway data
-      const runwayResponse = await axios.get(`${API_BASE_URL}/storage/runway`);
-      setRunwayData(runwayResponse.data);
-      
-      // Refetch forecast data if a system is selected
-      if (selectedSystem) {
-        const forecastResponse = await axios.get(`${API_BASE_URL}/storage/forecast/${selectedSystem}`);
-        setForecastData(forecastResponse.data);
-      }
-      
-      // Update warning based on new runway days
-      if (runwayResponse.data.length > 0) {
-        const primarySystem = runwayResponse.data[0]; // assuming first is primary
-        if (primarySystem.estimated_runway_days <= 3) {
-          setWarning("Critical: Only 3 days or less of storage left!");
-        } else if (primarySystem.estimated_runway_days <= 7) {
-          setWarning("Warning: Less than a week of storage left!");
-        } else {
-          setWarning("");
-        }
-      }
+      // WebSocket will handle the updates for us
     } catch (error) {
       console.error("Error updating pipeline status:", error);
       // Revert the toggle if the API call fails
@@ -156,6 +272,14 @@ const Dashboard = () => {
           <h1 className="text-3xl font-bold text-gray-800">Storage Forecast Dashboard</h1>
           <p className="text-gray-600">Monitor storage usage and forecast runway availability.</p>
         </header>
+
+        {/* Live Data Indicator */}
+        <div className="mb-4 flex items-center">
+          <div className={`h-3 w-3 rounded-full mr-2 ${socketRef.current && socketRef.current.readyState === WebSocket.OPEN ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+          <span className="text-sm text-gray-600">
+            {socketRef.current && socketRef.current.readyState === WebSocket.OPEN ? 'Live Data Connected' : 'Connecting to Live Data...'}
+          </span>
+        </div>
 
         {/* Information Bubble */}
         {runwayData.length > 0 && runwayData[0].net_impact_rate_gb_per_day > 0 && (

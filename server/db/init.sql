@@ -59,4 +59,61 @@ INSERT INTO storage_usage_history (storage_system_id, recorded_at, used_capacity
 (2, '2025-04-11 00:00:00', 830);
 
 -- Simulate a pipeline failure (e.g., Garbage Collection Pipeline fails)
-UPDATE pipelines SET status = 'failed', last_run = '2025-04-10 00:00:00' WHERE name = 'Garbage Collection Pipeline'; 
+UPDATE pipelines SET status = 'failed', last_run = '2025-04-10 00:00:00' WHERE name = 'Garbage Collection Pipeline';
+
+-- -- Create notification function and trigger for pipeline changes
+-- CREATE OR REPLACE FUNCTION notify_pipeline_change()
+-- RETURNS trigger AS $$
+-- BEGIN
+--   PERFORM pg_notify(
+--     'pipeline_change',
+--     json_build_object(
+--       'action', TG_OP,
+--       'data', row_to_json(NEW)
+--     )::text
+--   );
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- CREATE TRIGGER pipeline_change_trigger
+-- AFTER INSERT OR UPDATE OR DELETE ON pipelines
+-- FOR EACH ROW EXECUTE FUNCTION notify_pipeline_change();
+
+-- -- Create notification function and trigger for storage system changes
+-- CREATE OR REPLACE FUNCTION notify_storage_change()
+-- RETURNS trigger AS $$
+-- BEGIN
+--   PERFORM pg_notify(
+--     'storage_change',
+--     json_build_object(
+--       'action', TG_OP,
+--       'data', row_to_json(NEW)
+--     )::text
+--   );
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- CREATE TRIGGER storage_change_trigger
+-- AFTER INSERT OR UPDATE OR DELETE ON storage_systems
+-- FOR EACH ROW EXECUTE FUNCTION notify_storage_change();
+
+-- -- Create notification function and trigger for storage history changes
+-- CREATE OR REPLACE FUNCTION notify_storage_history_change()
+-- RETURNS trigger AS $$
+-- BEGIN
+--   PERFORM pg_notify(
+--     'storage_change',
+--     json_build_object(
+--       'action', TG_OP,
+--       'data', row_to_json(NEW)
+--     )::text
+--   );
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- CREATE TRIGGER storage_history_change_trigger
+-- AFTER INSERT OR UPDATE OR DELETE ON storage_usage_history
+-- FOR EACH ROW EXECUTE FUNCTION notify_storage_history_change();
