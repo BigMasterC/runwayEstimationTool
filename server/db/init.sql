@@ -30,8 +30,8 @@ CREATE TABLE storage_usage_history (
 
 -- Insert example storage systems
 INSERT INTO storage_systems (name, total_capacity_gb, used_capacity_gb) VALUES
-('Primary Storage', 1000, 500), -- A storage system with 1000GB total capacity and 500GB used
-('Backup Storage', 2000, 800); -- A larger storage system
+('Primary Storage', 1000, 500), -- A storage system with 1000GB total capacity and 500GB used (storage_system_id=1)
+('Backup Storage', 2000, 800); -- A larger storage system (storage_system_id=2)
 
 -- Insert example pipelines
 INSERT INTO pipelines (name, description, status, impact_rate_gb_per_day) VALUES
@@ -61,59 +61,59 @@ INSERT INTO storage_usage_history (storage_system_id, recorded_at, used_capacity
 -- Simulate a pipeline failure (e.g., Garbage Collection Pipeline fails)
 UPDATE pipelines SET status = 'failed', last_run = '2025-04-10 00:00:00' WHERE name = 'Garbage Collection Pipeline';
 
--- -- Create notification function and trigger for pipeline changes
--- CREATE OR REPLACE FUNCTION notify_pipeline_change()
--- RETURNS trigger AS $$
--- BEGIN
---   PERFORM pg_notify(
---     'pipeline_change',
---     json_build_object(
---       'action', TG_OP,
---       'data', row_to_json(NEW)
---     )::text
---   );
---   RETURN NEW;
--- END;
--- $$ LANGUAGE plpgsql;
+-- Create notification function and trigger for pipeline changes
+CREATE OR REPLACE FUNCTION notify_pipeline_change()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'pipeline_change',
+    json_build_object(
+      'action', TG_OP,
+      'data', row_to_json(NEW)
+    )::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- CREATE TRIGGER pipeline_change_trigger
--- AFTER INSERT OR UPDATE OR DELETE ON pipelines
--- FOR EACH ROW EXECUTE FUNCTION notify_pipeline_change();
+CREATE TRIGGER pipeline_change_trigger
+AFTER INSERT OR UPDATE OR DELETE ON pipelines
+FOR EACH ROW EXECUTE FUNCTION notify_pipeline_change();
 
--- -- Create notification function and trigger for storage system changes
--- CREATE OR REPLACE FUNCTION notify_storage_change()
--- RETURNS trigger AS $$
--- BEGIN
---   PERFORM pg_notify(
---     'storage_change',
---     json_build_object(
---       'action', TG_OP,
---       'data', row_to_json(NEW)
---     )::text
---   );
---   RETURN NEW;
--- END;
--- $$ LANGUAGE plpgsql;
+-- Create notification function and trigger for storage system changes
+CREATE OR REPLACE FUNCTION notify_storage_change()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'storage_change',
+    json_build_object(
+      'action', TG_OP,
+      'data', row_to_json(NEW)
+    )::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- CREATE TRIGGER storage_change_trigger
--- AFTER INSERT OR UPDATE OR DELETE ON storage_systems
--- FOR EACH ROW EXECUTE FUNCTION notify_storage_change();
+CREATE TRIGGER storage_change_trigger
+AFTER INSERT OR UPDATE OR DELETE ON storage_systems
+FOR EACH ROW EXECUTE FUNCTION notify_storage_change();
 
--- -- Create notification function and trigger for storage history changes
--- CREATE OR REPLACE FUNCTION notify_storage_history_change()
--- RETURNS trigger AS $$
--- BEGIN
---   PERFORM pg_notify(
---     'storage_change',
---     json_build_object(
---       'action', TG_OP,
---       'data', row_to_json(NEW)
---     )::text
---   );
---   RETURN NEW;
--- END;
--- $$ LANGUAGE plpgsql;
+-- Create notification function and trigger for storage history changes
+CREATE OR REPLACE FUNCTION notify_storage_history_change()
+RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'storage_change',
+    json_build_object(
+      'action', TG_OP,
+      'data', row_to_json(NEW)
+    )::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- CREATE TRIGGER storage_history_change_trigger
--- AFTER INSERT OR UPDATE OR DELETE ON storage_usage_history
--- FOR EACH ROW EXECUTE FUNCTION notify_storage_history_change();
+CREATE TRIGGER storage_history_change_trigger
+AFTER INSERT OR UPDATE OR DELETE ON storage_usage_history
+FOR EACH ROW EXECUTE FUNCTION notify_storage_history_change();
